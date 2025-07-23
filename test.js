@@ -1,137 +1,74 @@
 
+
+/* HTTP server that allows users to upload text files.
+When a file is uploaded, the server will read its contents, 
+convert the text to uppercase, 
+and then provide a download link for the converted file
+ */
+import fs from 'fs'
 import http from 'http'
-import {URL} from 'url'  
 
-let todo=[
-    {id:1, task:'read',completed:false},
-    {id:2, task:'study',completed:true},
-    {id:3, task:'play',completed:false}
-]
+import { Transform} from 'stream'
+
+const ToUpper = new Transform({
+    transform(chunk,encode,callback){
+        this.push(chunk.toString().toUpperCase())
+        callback();
+    }
+})
+
 const server = http.createServer((req,res)=>{
-    const {method,url} = req
-    const parsedurl = new URL(url,  `http://${req.headers.host}`)
-    const pathname = parsedurl.pathname
 
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    if(method==='OPTIONS'){   //options
-        res.writeHead(204)
-        res.end()
-        return;
-    }
+    // file inputing method is required and we will update it soon
 
-    else if(method==='GET'&& pathname==='/todo'){  //get
-        res.writeHead(200,{'Content-Type':'application/json'})
-    res.end(JSON.stringify(todo))}
+    const input_file='file uploading method'
+    const output_file = path.join(__dirname,'uploads','converted.txt')
 
-    else if(method==='GET' && pathname.startsWith('/todo/')){
-        const id = parseInt(pathname.split('/')[2])
-        const index = todo.findIndex(t=>t.id ===id)
+const readStream = fs.createReadStream(input_file)
+const writestream = fs.createWriteStream(output_file)
 
-        try{
-            if(todo[index]){
-                res.writeHead(200,{'content-type':'application/json'})
-                res.end(JSON.stringify(todo[index]))
+readStream.pipe(ToUpper).pipe(writestream).on('data',()=>{console.log('//generate link')})
+
+writestream.on('finish',()=>{
+    res.writeHead(200,{'content-type':'text/html'})
+    res.end(`<p>file uploaded and convertde  <a href="/download?file=${path.basename(output_file)}">download here</a>  </p>`)
+})
+writestream.on('error',(err)=>{
+    res.statusCode(500)
+    res.end('error writing the file')
+})
+
+})
+
+//handle download
+server.on('request',(req,res)=>{
+    if(req.method.startsWith('/download')){
+        const query = new URL(req.url,`http://${req.header.host}`).searchParams
+        const filename = query.get('file')
+        const filepath = path.join(__dirname,'uploads',filename);
+
+        fs.access(filepath,fs.constants.F_OK,(err)=>{
+            if(err){
+                res.writeHead(400)
+                res.end('file not found')
+                return;
             }
-            else{
-                res.writeHead(400,{'content-type':'application/json'})
-            res.end(JSON.stringify({error:`task with id ${id} not found`}))
-            }
-        }
-        catch(e){
-            res.writeHead(400,{'content-type':'application/json'})
-            res.end(JSON.stringify({error:'page not found'}))
-        }
-    }
 
-
-    else if (method==='POST' && pathname==='/todo'){   //post
-
-        let body =''
-        req.on('data',chunk=>{
-            body+=chunk.toString()
-        })
-
-        req.on('end',()=>{
-            try{
-                const newtodo=JSON.parse(body)
-                newtodo.id=todo.length>0? Math.max(...todo.map(t=>t.id))+1:1
-                todo.push(newtodo)
-                res.writeHead(201,{'content-type':'application/json'})
-                res.end(JSON.stringify(newtodo))
-
-            }
-            catch(e){
-                res.writeHead(400,{'content-type':'application/json'})
-                res.end(JSON.stringify({error:'todo not found'}))
-            }
+            res.writeHead(200,{'content-type':'text/plain'})
+            const readStream = fs.createReadStream(filepath)
+            readStream.pipe(res)
         })
     }
-
-    else if (method ==='PUT' && pathname.startsWith('/todo/')){
-
-         const id = parseInt(pathname.split('/')[2])
-        let body = ''
-
-        req.on('data',(chunk)=>
-        {
-            body+=chunk.toString()
-        })
+})
 
 
-    req.on('end',()=>{
-
-                           
-      try{
-            const updatedtodo =JSON.parse(body)
-            const index = todo.findIndex(t=>t.id===id)
 
 
-            if(index== -1){
-                res.writeHead(404,{'content-type':'application/json'})
-                res.end(JSON.stringify({error:'item not found'}))
-            }
-            else{
-                todo[index]={...todo[index] , ... updatedtodo}
-                res.writeHead(200,{'content-type':'application/json'})
-                res.end(JSON.stringify(todo[index]))
-            }
-        }
 
-        catch(e){
+server.listen(3000,'localhost',()=>{
+    console.log('server satrted at http://localhost:3000')
+})
 
-            res.writeHead(400,{'content-type':'application/json'})
-            res.end(JSON.stringify({error:'couldnt find '}))
-        }
-
-     })}
-
-    else if(method==='DELETE'&& pathname.startsWith('/todo/')){
-        const id = parseInt(pathname.split('/')[2])
-        const index = todo.findIndex(t=>t.id === id)
-
-        if(index === -1){
-            res.writeHead(404,{'content-type':'application/json'})
-            res.end(JSON.stringify({error:'page not found'}))
-        }
-        else{
-            todo = todo.filter(t=>t.id !== id)
-            res.writeHead(204)
-            res.end()
-        }
-
-    }
-   
-        
     
-    else{
-        res.writeHead(404,{'content-type':'application/json'})
-        res.end(JSON.stringify({error:'page not found'}))
-    }
 
-})
-server.listen(8080,()=>{
-    console.log('server started at http://localhost:8080')
-})
